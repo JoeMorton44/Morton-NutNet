@@ -76,7 +76,11 @@ require(corrplot)
 
 #This will extract the bioclim variables for the sites we are interested in and use a PCA to identify climate variables to include in our analysis
   
-climate <- read.csv("27-site-background-data.csv", row.names = 1)
+climate <- read.csv("27-site-climate-data.csv", row.names = 1)
+
+cor_matrix <- cor( climate[ , c( 10:28 ) ] )
+
+write.csv(cor_matrix, "Climate Correlation Matrix.csv")
 
 #Generate a PCA for all climate variables
 pca <- prcomp( climate[ , c( 10:28 ) ],
@@ -308,9 +312,6 @@ require(nlme)
 cover_final <- read.csv( "27-site-species-final-data.csv", 
                          row.names = 1 )
 
-#Remove non-angiosperms
-cover_final <- cover_final[ cover_final$Angiosperm == "Angiosperm" , ]
-
 #Split site by each plot in each year 
 cover_final$plotyear_code <- paste( cover_final$plot_code, 
                                     cover_final$year, 
@@ -394,7 +395,7 @@ plot( LRR_tc ~ NP, data = plot_final )
 plot( LRR_tp ~ NP, data = plot_final )
 
 #Run linear mixed effects models for both LRRs
-tc_model <- lmer(LRR_tc ~ NP + (1|site_code/block), 
+tc_model <- lmer(LRR_tc ~ N * P + (1|site_code/block), 
                  data = plot_final)
 
 #Get ANOVA outputs and summary
@@ -403,7 +404,7 @@ summary(tc_model)
 #Look at R-squared
 r.squaredGLMM(tc_model)
 
-tp_model <- lmer(LRR_tp ~ NP + (1|site_code/block), 
+tp_model <- lmer(LRR_tp ~ N * P + (1|site_code/block), 
                  data = plot_final)
 
 #Get ANOVA outputs and summary
@@ -420,15 +421,15 @@ plot_final$map <- scale( plot_final$MAP )
 plot_final$map_var <- scale( plot_final$precip_seasonality )
 
 #Run the model including 2 way interactions betweeen nutrients and each climate variable
-LRR_clim_mod <- lmer(LRR_tc ~ NP + NP*temp_var + NP*mat + NP*map + NP*map_var + (1|site_code/block),
-                     data = plot_final)
+LRR_clim_mod <- lmer( LRR_tc ~ N*P*temp_var + N*P*mat + N*P*map + N*P*map_var + (1|site_code/block),
+                     data = plot_final )
 
 #Get ANOVA outputs and summary
-anova(LRR_clim_mod)
-summary(LRR_clim_mod)
+anova( LRR_clim_mod )
+summary( LRR_clim_mod )
 
 #Look at R-squared
-r.squaredGLMM(LRR_clim_mod)
+r.squaredGLMM( LRR_clim_mod )
 
 
 ###====Analysis of species richness====
@@ -450,7 +451,7 @@ plot_data$NP <- factor(plot_data$NP,
 
 
 #Fit linear mixed effect model
-richness_mod <- lmer( sp_rich ~ NP * plot_age + (1|site_code/block),
+richness_mod <- lmer( sp_rich ~ N * P + (1|site_code/block),
                       data = plot_data )
 
 #View model output
@@ -529,7 +530,7 @@ richness$GS_Cat <- factor( richness$GS_Cat,
 
 
 #Fit model of richness against nutrient treatment and GS
-GSrich_model <- lmer(GS_richness ~ NP * GS_Cat + (1|site_code/block),
+GSrich_model <- lmer(GS_richness ~ N * P * GS_Cat + (1|site_code/block),
                      data = richness_final)
 
 #View model output
@@ -545,10 +546,10 @@ richness_final$map <- scale( richness_final$MAP )
 richness_final$map_var <- scale( richness_final$precip_seasonality )
 
 #Run the model including 2 way interactions betweeen nutrients and each climate variable
-richclim_mod <- lmer(GS_richness ~ NP*GS_Cat*mat + 
-                       NP*GS_Cat*map + 
-                       NP*GS_Cat*temp_var + 
-                       NP*GS_Cat*map_var + 
+richclim_mod <- lmer(GS_richness ~ N*P*GS_Cat*mat + 
+                       N*P*GS_Cat*map + 
+                       N*P*GS_Cat*temp_var + 
+                       N*P*GS_Cat*map_var + 
                        (1|site_code/block),
                      data = richness_final)
 
@@ -637,66 +638,9 @@ measured_tree <- keep.tip(phylogeny, tip=tips_measured)
 write.tree(measured_tree, "measured-GS-tree.tre")
 
 
-#Now prune for each functional group
+#Now prune for grasses
 
 cover_noNA <- cover_final[!is.na(cover_final$GS_1C),]
-
-#2 Prune phylogeny for annuals
-
-annual <- cover_noNA[ cover_noNA$lifeform == "Annual Forb" , ]
-
-#Compile species list
-annual_list <- unique(annual$phylo)
-
-# get the tip labels corresponding to species
-tips_annual = lapply(1:length(annual_list), 
-                     function(x) grep(paste(annual_list[[x]], collapse='.+'),
-                                      phylogeny$tip.label, ignore.case=T))
-
-# show the species that haven't been found
-not_found = which(sapply(tips_annual, length)==0)
-annual_list[not_found]
-
-#Make sure there are no NAs in the tip labels 
-tips_annual <- sapply( tips_annual, function( x ) x[ 1 ] )
-not_NA <- !is.na( tips_annual )
-tips_annual <- tips_annual[ not_NA ]
-phylogeny$tip.label[ tips_annual ] <- sp_list[ not_NA ]
-
-#Construct and write the tree
-annual_tree <- keep.tip(phylogeny, tip=tips_annual)
-write.tree(annual_tree, "annual-GS-tree.tre")
-
-
-#3 Prune phylogeny for geophytes
-
-geophyte <- cover_noNA[ cover_noNA$lifeform == "Geophyte" , ]
-
-#Compile species list
-geophyte_list <- unique(geophyte$phylo)
-
-# get the tip labels corresponding to species
-tips_geophyte = lapply(1:length(geophyte_list), 
-                       function(x) grep(paste(geophyte_list[[x]], collapse='.+'),
-                                        phylogeny$tip.label, ignore.case=T))
-
-# show the species that haven't been found
-not_found = which(sapply(tips_geophyte, length)==0)
-geophyte_list[not_found]
-
-#Make sure there are no NAs in the tip labels 
-tips_geophyte <- sapply( tips_geophyte, function( x ) x[ 1 ] )
-not_NA <- !is.na( tips_geophyte )
-tips_geophyte <- tips_geophyte[ not_NA ]
-phylogeny$tip.label[ tips_geophyte ] <- sp_list[ not_NA ]
-
-#Construct and write the tree
-geophyte_tree <- keep.tip(phylogeny, tip=tips_geophyte)
-write.tree(geophyte_tree, "geophyte-GS-tree.tre")
-
-
-
-#4 Prune phylogeny for grasses
 
 grass <- cover_noNA[ cover_noNA$lifeform == "Grass" , ]
 
@@ -721,90 +665,6 @@ phylogeny$tip.label[ tips_grass ] <- sp_list[ not_NA ]
 #Construct and write the tree
 grass_tree <- keep.tip(phylogeny, tip=tips_grass)
 write.tree(grass_tree, "grass-GS-tree.tre")
-
-
-
-#5 Prune phylogeny for legumes
-
-legume <- cover_noNA[ cover_noNA$lifeform == "Legume" , ]
-
-#Compile species list
-legume_list <- unique(legume$phylo)
-
-# get the tip labels corresponding to species
-tips_legume = lapply(1:length(legume_list), 
-                     function(x) grep(paste(legume_list[[x]], collapse='.+'),
-                                      phylogeny$tip.label, ignore.case=T))
-
-# show the species that haven't been found
-not_found = which(sapply(tips_legume, length)==0)
-legume_list[not_found]
-
-#Make sure there are no NAs in the tip labels 
-tips_legume <- sapply( tips_legume, function( x ) x[ 1 ] )
-not_NA <- !is.na( tips_legume )
-tips_legume <- tips_legume[ not_NA ]
-phylogeny$tip.label[ tips_legume ] <- sp_list[ not_NA ]
-
-#Construct and write the tree
-legume_tree <- keep.tip(phylogeny, tip=tips_legume)
-write.tree(legume_tree, "legume-GS-tree.tre")
-
-
-
-#6 Prune phylogeny for perennial forbs
-
-perennial <- cover_noNA[ cover_noNA$lifeform == "Perennial Forb" , ]
-
-#Compile species list
-perennial_list <- unique(perennial$phylo)
-
-# get the tip labels corresponding to species
-tips_perennial = lapply(1:length(perennial_list), 
-                        function(x) grep(paste(perennial_list[[x]], collapse='.+'),
-                                         phylogeny$tip.label, ignore.case=T))
-
-# show the species that haven't been found
-not_found = which(sapply(tips_perennial, length)==0)
-perennial_list[not_found]
-
-#Make sure there are no NAs in the tip labels 
-tips_perennial <- sapply( tips_perennial, function( x ) x[ 1 ] )
-not_NA <- !is.na( tips_perennial )
-tips_perennial <- tips_perennial[ not_NA ]
-phylogeny$tip.label[ tips_perennial ] <- sp_list[ not_NA ]
-
-#Construct and write the tree
-perennial_tree <- keep.tip(phylogeny, tip=tips_perennial)
-write.tree(perennial_tree, "perennial-GS-tree.tre")
-
-
-
-#7 Prune phylogeny for woody species
-
-woody <- cover_noNA[ cover_noNA$lifeform == "Woody" , ]
-
-#Compile species list
-woody_list <- unique(woody$phylo)
-
-# get the tip labels corresponding to species
-tips_woody = lapply(1:length(woody_list), 
-                    function(x) grep(paste(woody_list[[x]], collapse='.+'),
-                                     phylogeny$tip.label, ignore.case=T))
-
-# show the species that haven't been found
-not_found = which(sapply(tips_woody, length)==0)
-woody_list[not_found]
-
-#Make sure there are no NAs in the tip labels 
-tips_woody <- sapply( tips_woody, function( x ) x[ 1 ] )
-not_NA <- !is.na( tips_woody )
-tips_woody <- tips_woody[ not_NA ]
-phylogeny$tip.label[ tips_woody ] <- sp_list[ not_NA ]
-
-#Construct and write the tree
-woody_tree <- keep.tip(phylogeny, tip=tips_woody)
-write.tree(woody_tree, "woody-GS-tree.tre")
 
 ###====Analysis of species cover responses to nutrients====
 
@@ -847,8 +707,7 @@ phylo_final <- phylo_final [phylo_final$presence == "1" , ]
 #1 Overall model
 phylogeny <- read.tree("27_site_phylogeny.tre")
 
-#Reformat factor levels for nutrients
-phylo_final$NP <- factor(phylo_final$NP, levels = c("Control", "N", "P", "NP"))
+#log transform GS 
 phylo_final$log.GS <- log(phylo_final$GS_1C)
 
 #Get the vcv matrix up 
@@ -856,13 +715,15 @@ A <- ape:::vcv.phylo(phylogeny)
 
 #Run the model with log.GS
 full_brms <- brm(
-  delta_cover ~ log.GS * NP +                    #Fixed effects
+  delta_cover ~ log.GS * N * P +                    #Fixed effects
     ( 1|gr( phylo, cov = A ) ) +                 #Phylogenetic covariance matrix as random effect
     ( 1|site_code/block ),                       #Block nested within site as random effect
   data = phylo_final,                            #Data source
   family = gaussian(),                           #Distribution of data
   data2 = list( A = A ),                         #Source of variance-covariance matrix for phylogeny
-  prior = c( prior( normal( 0, 1 ), "b" ) ),     #Define any priors for the model
+  prior = c( prior( normal( 0, 1 ), "b" ) ),
+  sample_prior = TRUE, chains = 3, 
+  iter = 20000, warmup = 8000,                   #Define any priors for the model
   cores = getOption( "mc.cores", 3 ),            #Run on 3 cores to speed up models
   control = list( adapt_delta = 0.9,
                   max_treedepth = 15 ) )         #Set based on preliminary runs to ensure convergence
@@ -884,7 +745,7 @@ A <- ape:::vcv.phylo(measured_tree)
 
 #Run the model with log.GS
 measured_brms <- brm(
-  delta_cover ~ log.GS * NP + 
+  delta_cover ~ log.GS * N * P + 
     ( 1|gr( phylo, cov = A ) ) + 
     ( 1|site_code/block ), 
   data = measured, 
@@ -902,204 +763,36 @@ plot( measured_brms, N = 2, ask = TRUE )
 plot( conditional_effects( measured_brms ), points = TRUE )
 
 
-
-#3 Annual model
-annual <- phylo_final[phylo_final$Source == "Annual Forb",]
-annual_tree <- read.tree("annual_GS_tree.tre")
-
+#3 Overall model including functional group as a interacting factor
+phylogeny <- read.tree("27_site_phylogeny.tre")
+                     
 #Get the vcv matrix up 
-A <- ape:::vcv.phylo(annual_tree)
+A <- ape:::vcv.phylo(phylogeny)
 
 #Run the model with log.GS
-annual_brms <- brm(
-  delta_cover ~ log.GS * NP + 
-    ( 1|gr( phylo, cov = A ) ) + 
-    ( 1|site_code/block ), 
-  data = annual, 
-  family = gaussian(), 
-  data2 = list( A = A ),
+lifeform_brms <- brm(
+  delta_cover ~ log.GS * N * P * lifeform +      #Fixed effects
+    ( 1|gr( phylo, cov = A ) ) +                 #Phylogenetic covariance matrix as random effect
+    ( 1|site_code/block ),                       #Block nested within site as random effect
+  data = phylo_final,                            #Data source
+  family = gaussian(),                           #Distribution of data
+  data2 = list( A = A ),                         #Source of variance-covariance matrix for phylogeny
   prior = c( prior( normal( 0, 1 ), "b" ) ),
   sample_prior = TRUE, chains = 3, 
-  iter = 20000, warmup = 8000, 
-  cores = getOption( "mc.cores", 3 ),
-  control = list(adapt_delta = 0.9,
-                 max_treedepth = 15))
+  iter = 20000, warmup = 8000,                   #Define any priors for the model
+  cores = getOption( "mc.cores", 3 ),            #Run on 3 cores to speed up models
+  control = list( adapt_delta = 0.9,
+                  max_treedepth = 15 ) )         #Set based on preliminary runs to ensure convergence
 
-summary( annual_brms )
-plot( annual_brms, N = 2, ask = TRUE )
-plot( conditional_effects( annual_brms ), points = TRUE )
+#View model output
+summary( lifeform_brms ) 
+#View posterior distributions and check for convergence (caterpillar plots)
+plot( lifeform_brms, N = 2, ask = TRUE )       
+#View model outputs graphically
+plot( conditional_effects( full_brms ), points = TRUE )
 
-
-
-#4 Grass model
-grass <- phylo_final[phylo_final$Source == "Grass",]
-grass_tree <- read.tree("grass_GS_tree.tre")
-
-#Get the vcv matrix up 
-A <- ape:::vcv.phylo(grass_tree)
-
-#Run the model with log.GS
-grass_brms <- brm(
-  delta_cover ~ log.GS * NP + 
-    ( 1|gr( phylo, cov = A ) ) + 
-    ( 1|site_code/block ), 
-  data = grass, 
-  family = gaussian(), 
-  data2 = list( A = A ),
-  prior = c( prior( normal( 0, 1 ), "b" ) ),
-  sample_prior = TRUE, chains = 3, 
-  iter = 20000, warmup = 8000, 
-  cores = getOption( "mc.cores", 3 ),
-  control = list(adapt_delta = 0.9,
-                 max_treedepth = 15))
-
-summary( grass_brms )
-plot( grass_brms, N = 2, ask = TRUE )
-plot( conditional_effects( grass_brms ), points = TRUE )
-
-
-
-#5 Geophyte model
-geophyte <- phylo_final[phylo_final$Source == "Geophyte",]
-geophyte_tree <- read.tree("geophyte_GS_tree.tre")
-
-#Get the vcv matrix up 
-A <- ape:::vcv.phylo(geophyte_tree)
-
-#Run the model with log.GS
-geophyte_brms <- brm(
-  delta_cover ~ log.GS * NP + 
-    ( 1|gr( phylo, cov = A ) ) + 
-    ( 1|site_code/block ), 
-  data = geophyte, 
-  family = gaussian(), 
-  data2 = list( A = A ),
-  prior = c( prior( normal( 0, 1 ), "b" ) ),
-  sample_prior = TRUE, chains = 3, 
-  iter = 20000, warmup = 8000, 
-  cores = getOption( "mc.cores", 3 ),
-  control = list(adapt_delta = 0.9,
-                 max_treedepth = 15))
-
-summary( geophyte_brms )
-plot( geophyte_brms, N = 2, ask = TRUE )
-plot( conditional_effects( geophyte_brms ), points = TRUE )
-
-
-
-
-#6 Legume model
-legume <- phylo_final[phylo_final$Source == "legume",]
-legume_tree <- read.tree("legume_GS_tree.tre")
-
-#Get the vcv matrix up 
-A <- ape:::vcv.phylo(legume_tree)
-
-#Run the model with log.GS
-legume_brms <- brm(
-  delta_cover ~ log.GS * NP + 
-    ( 1|gr( phylo, cov = A ) ) + 
-    ( 1|site_code/block ), 
-  data = legume, 
-  family = gaussian(), 
-  data2 = list( A = A ),
-  prior = c( prior( normal( 0, 1 ), "b" ) ),
-  sample_prior = TRUE, chains = 3, 
-  iter = 20000, warmup = 8000, 
-  cores = getOption( "mc.cores", 3 ),
-  control = list(adapt_delta = 0.9,
-                 max_treedepth = 15))
-
-summary( legume_brms )
-plot( legume_brms, N = 2, ask = TRUE )
-plot( conditional_effects( legume_brms ), points = TRUE )
-
-
-
-#7 Perennial model
-perennial <- phylo_final[phylo_final$Source == "perennial",]
-perennial_tree <- read.tree("perennial_GS_tree.tre")
-
-#Get the vcv matrix up 
-A <- ape:::vcv.phylo(perennial_tree)
-
-#Run the model with log.GS
-perennial_brms <- brm(
-  delta_cover ~ log.GS * NP + 
-    ( 1|gr( phylo, cov = A ) ) + 
-    ( 1|site_code/block ), 
-  data = perennial, 
-  family = gaussian(), 
-  data2 = list( A = A ),
-  prior = c( prior( normal( 0, 1 ), "b" ) ),
-  sample_prior = TRUE, chains = 3, 
-  iter = 20000, warmup = 8000, 
-  cores = getOption( "mc.cores", 3 ),
-  control = list(adapt_delta = 0.9,
-                 max_treedepth = 15))
-
-summary( perennial_brms )
-plot( perennial_brms, N = 2, ask = TRUE )
-plot( conditional_effects( perennial_brms ), points = TRUE )
-
-
-
-#8 Woody model
-woody <- phylo_final[phylo_final$Source == "woody",]
-woody_tree <- read.tree("woody_GS_tree.tre")
-
-#Get the vcv matrix up 
-A <- ape:::vcv.phylo(woody_tree)
-
-#Run the model with log.GS
-woody_brms <- brm(
-  delta_cover ~ log.GS * NP + 
-    ( 1|gr( phylo, cov = A ) ) + 
-    ( 1|site_code/block ), 
-  data = woody, 
-  family = gaussian(), 
-  data2 = list( A = A ),
-  prior = c( prior( normal( 0, 1 ), "b" ) ),
-  sample_prior = TRUE, chains = 3, 
-  iter = 20000, warmup = 8000, 
-  cores = getOption( "mc.cores", 3 ),
-  control = list(adapt_delta = 0.9,
-                 max_treedepth = 15))
-
-summary( woody_brms )
-plot( woody_brms, N = 2, ask = TRUE )
-plot( conditional_effects( woody_brms ), points = TRUE )
-
-
-#8 Woody model
-woody <- phylo_final[phylo_final$Source == "woody",]
-woody_tree <- read.tree("woody_GS_tree.tre")
-
-#Get the vcv matrix up 
-A <- ape:::vcv.phylo(woody_tree)
-
-#Run the model with log.GS
-woody_brms <- brm(
-  delta_cover ~ log.GS * NP + 
-    ( 1|gr( phylo, cov = A ) ) + 
-    ( 1|site_code/block ), 
-  data = woody, 
-  family = gaussian(), 
-  data2 = list( A = A ),
-  prior = c( prior( normal( 0, 1 ), "b" ) ),
-  sample_prior = TRUE, chains = 3, 
-  iter = 20000, warmup = 8000, 
-  cores = getOption( "mc.cores", 3 ),
-  control = list(adapt_delta = 0.9,
-                 max_treedepth = 15))
-
-summary( woody_brms )
-plot( woody_brms, N = 2, ask = TRUE )
-plot( conditional_effects( woody_brms ), points = TRUE )
-
-
-
-#9 Grass photosynthesis model
+                     
+#4 Grass photosynthesis model
 photosynthesis <- phylo_final[phylo_final$Source == "Grass",]
 grass_tree <- read.tree("grass_GS_tree.tre")
 
